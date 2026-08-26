@@ -27,15 +27,16 @@ function scheduleContinuousGroup(athleteNumbers, boulderOrder, restIntervals, in
 }
 
 // "2 Sets" spiegelt den Fall, dass sich das Feld in zwei physische Zonen aufteilt, die
-// gleichzeitig starten (Set A: Boulder 1..n/2, Set B: Boulder n/2+1..n) und nach dem
-// eigenen Set-Durchlauf ins jeweils andere Set wechseln. Beide Gruppen laufen unabhängig
-// nach obigem Modell; anschließend wird geprüft, ob sich beim Wechsel Belegungen
-// überschneiden (zu wenig Versatz für die Feldgröße).
+// gleichzeitig starten (Set A: die ersten Boulder, Set B: die restlichen) und nach dem
+// eigenen Set-Durchlauf ins jeweils andere Set wechseln. Bei ungerader Boulderzahl bekommt
+// Set A den einen Boulder mehr (z.B. 5 Boulder -> Set A: 1-3, Set B: 4-5). Beide Gruppen
+// laufen unabhängig nach obigem Modell; anschließend wird geprüft, ob sich beim Wechsel
+// Belegungen überschneiden (zu wenig Versatz für die Feldgröße).
 function calcBoulder(params) {
   const { starters, numBoulders, climbTimeMin, transitionSec, restIntervals, numSets } = params;
   const intervalMin = climbTimeMin + transitionSec / 60;
   const R = Math.max(1, restIntervals || 2);
-  const useSets = numSets === 2 && numBoulders % 2 === 0;
+  const useSets = numSets === 2;
   const occupancy = new Map();
 
   let slots = [];
@@ -49,11 +50,11 @@ function calcBoulder(params) {
     collisions = res.collisions;
   } else {
     const half = Math.ceil(starters / 2);
-    const perSet = numBoulders / 2;
+    const setASize = Math.ceil(numBoulders / 2);
     const groupA = Array.from({ length: half }, (_, k) => k + 1);
     const groupB = Array.from({ length: starters - half }, (_, k) => k + 1 + half);
     const orderA = Array.from({ length: numBoulders }, (_, k) => k + 1);
-    const orderB = Array.from({ length: numBoulders }, (_, k) => ((k + perSet) % numBoulders) + 1);
+    const orderB = Array.from({ length: numBoulders }, (_, k) => ((k + setASize) % numBoulders) + 1);
     const resA = scheduleContinuousGroup(groupA, orderA, R, intervalMin, climbTimeMin, "Set A", occupancy);
     const resB = scheduleContinuousGroup(groupB, orderB, R, intervalMin, climbTimeMin, "Set B", occupancy);
     slots = resA.slots.concat(resB.slots);
@@ -61,12 +62,9 @@ function calcBoulder(params) {
   }
 
   const durationMin = Math.max(...slots.map(s => s.endOffsetMin));
-  let warning = null;
-  if (numSets === 2 && numBoulders % 2 !== 0) {
-    warning = `"2 Sets" braucht eine gerade Anzahl Boulder zum gleichmäßigen Aufteilen - bei ${numBoulders} Boulder(n) wird stattdessen mit 1 Set gerechnet.`;
-  } else if (collisions > 0) {
-    warning = `${collisions} Belegungsüberschneidung(en) beim Set-Wechsel erkannt: Der Versatz (${R} Intervalle) reicht bei dieser Starterzahl/Boulderzahl nicht aus, um Set-A- und Set-B-Athlet:innen kollisionsfrei zu wechseln. Versatz erhöhen oder Gruppengröße anpassen.`;
-  }
+  const warning = collisions > 0
+    ? `${collisions} Belegungsüberschneidung(en) beim Set-Wechsel erkannt: Der Versatz (${R} Intervalle) reicht bei dieser Starterzahl/Boulderzahl nicht aus, um Set-A- und Set-B-Athlet:innen kollisionsfrei zu wechseln. Versatz erhöhen oder Gruppengröße anpassen.`
+    : null;
 
   return {
     durationMin,

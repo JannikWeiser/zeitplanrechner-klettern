@@ -1,5 +1,13 @@
-const PX_PER_MIN = 3.6;
+const GANTT_ZOOM_DEFAULT = 3.6;
+const GANTT_ZOOM_MIN = 0.8;
+const GANTT_ZOOM_MAX = 10;
+let ganttZoom = Number(localStorage.getItem("zoomPxPerMin")) || GANTT_ZOOM_DEFAULT;
 const expandedRounds = new Set();
+
+function setGanttZoom(value) {
+  ganttZoom = Math.min(GANTT_ZOOM_MAX, Math.max(GANTT_ZOOM_MIN, value));
+  localStorage.setItem("zoomPxPerMin", ganttZoom);
+}
 
 function renderGantt(container, event, computed) {
   container.innerHTML = "";
@@ -35,7 +43,7 @@ function renderGantt(container, event, computed) {
     let dayMax = Math.max(dayMin + 480, ...dayRows.map(r => r.endMin));
     dayMin = Math.floor(dayMin / 60) * 60;
     dayMax = Math.ceil(dayMax / 60) * 60;
-    const totalWidth = (dayMax - dayMin) * PX_PER_MIN;
+    const totalWidth = (dayMax - dayMin) * ganttZoom;
 
     const scale = document.createElement("div");
     scale.className = "gantt-scale";
@@ -43,7 +51,7 @@ function renderGantt(container, event, computed) {
     for (let t = dayMin; t <= dayMax; t += 60) {
       const tick = document.createElement("div");
       tick.className = "tick";
-      tick.style.left = (t - dayMin) * PX_PER_MIN + "px";
+      tick.style.left = (t - dayMin) * ganttZoom + "px";
       tick.textContent = minutesToTime(t);
       scale.appendChild(tick);
     }
@@ -59,8 +67,8 @@ function renderGantt(container, event, computed) {
 
       const bar = document.createElement("div");
       bar.className = `gantt-bar gantt-bar-${c.round.discipline}`;
-      bar.style.left = (c.startMin - dayMin) * PX_PER_MIN + "px";
-      bar.style.width = Math.max((c.endMin - c.startMin) * PX_PER_MIN, 40) + "px";
+      bar.style.left = (c.startMin - dayMin) * ganttZoom + "px";
+      bar.style.width = Math.max((c.endMin - c.startMin) * ganttZoom, 40) + "px";
       bar.textContent = `${c.round.name} (${minutesToTime(c.startMin)}–${minutesToTime(c.endMin)})`;
       bar.title = c.result.warning ? `⚠ ${c.result.warning}` : (c.result.info || "");
       bar.addEventListener("click", () => {
@@ -75,7 +83,7 @@ function renderGantt(container, event, computed) {
         badge.className = "gantt-warning-badge";
         badge.textContent = "⚠";
         badge.title = c.result.warning;
-        badge.style.left = (c.startMin - dayMin) * PX_PER_MIN + "px";
+        badge.style.left = (c.startMin - dayMin) * ganttZoom + "px";
         row.appendChild(badge);
       }
 
@@ -100,8 +108,8 @@ function renderGantt(container, event, computed) {
             sub.className = `gantt-subbar gantt-bar-${c.round.discipline}`;
             const absStart = c.startMin + s.startOffsetMin;
             const absEnd = c.startMin + s.endOffsetMin;
-            sub.style.left = (absStart - dayMin) * PX_PER_MIN + "px";
-            sub.style.width = Math.max((absEnd - absStart) * PX_PER_MIN, 3) + "px";
+            sub.style.left = (absStart - dayMin) * ganttZoom + "px";
+            sub.style.width = Math.max((absEnd - absStart) * ganttZoom, 3) + "px";
             sub.title = `${s.label}: ${minutesToTime(absStart)}–${minutesToTime(absEnd)}`;
             subrow.appendChild(sub);
           });

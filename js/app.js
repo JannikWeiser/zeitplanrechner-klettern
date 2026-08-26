@@ -58,6 +58,7 @@ function renderAll() {
   renderRoundList(computed);
   renderEditor(computed);
   renderGantt(document.getElementById("ganttContainer"), Store.event, computed);
+  document.getElementById("zoomLabel").textContent = Math.round((ganttZoom / GANTT_ZOOM_DEFAULT) * 100) + "%";
 }
 
 function renderDays() {
@@ -431,6 +432,8 @@ function init() {
 
   document.getElementById("btnAddDay").addEventListener("click", () => { Store.addDay(); renderAll(); });
   document.getElementById("btnPrintGantt").addEventListener("click", () => window.print());
+  document.getElementById("btnZoomIn").addEventListener("click", () => { setGanttZoom(ganttZoom * 1.25); renderAll(); });
+  document.getElementById("btnZoomOut").addEventListener("click", () => { setGanttZoom(ganttZoom / 1.25); renderAll(); });
 
   document.querySelectorAll(".btn-add").forEach(btn => {
     btn.addEventListener("click", () => {
