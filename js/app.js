@@ -388,8 +388,40 @@ function formatDuration(mins) {
   return `${h} Std ${m} Min`;
 }
 
+// Jeder Tag soll auf eine eigene A4-Seite passen (page-break-after: page in CSS).
+// Damit das bei stark unterschiedlicher Rundenzahl/Zeitspanne pro Tag verlässlich klappt,
+// wird jeder .gantt-day-Block vor dem Drucken per CSS "zoom" so herunterskaliert, dass er
+// in die nutzbare A4-Querformat-Fläche passt (Detail-Ansichten werden dafür eingeklappt,
+// damit die Höhe pro Runde vorhersehbar bleibt).
+let printSavedExpanded = null;
+const PRINT_PAGE_WIDTH_PX = 1000;
+const PRINT_PAGE_HEIGHT_PX = 680;
+
+function preparePrint() {
+  printSavedExpanded = new Set(expandedRounds);
+  expandedRounds.clear();
+  renderAll();
+  if (!window.CSS || !CSS.supports("zoom", "1")) return;
+  document.querySelectorAll(".gantt-day").forEach(dayEl => {
+    dayEl.style.zoom = "1";
+    const scale = Math.min(1, PRINT_PAGE_WIDTH_PX / dayEl.scrollWidth, PRINT_PAGE_HEIGHT_PX / dayEl.scrollHeight);
+    dayEl.style.zoom = scale;
+  });
+}
+
+function restoreAfterPrint() {
+  document.querySelectorAll(".gantt-day").forEach(dayEl => { dayEl.style.zoom = ""; });
+  if (printSavedExpanded) {
+    printSavedExpanded.forEach(id => expandedRounds.add(id));
+    printSavedExpanded = null;
+  }
+  renderAll();
+}
+
 function init() {
   Store.load();
+  window.addEventListener("beforeprint", preparePrint);
+  window.addEventListener("afterprint", restoreAfterPrint);
 
   document.getElementById("eventName").value = Store.event.name;
   document.getElementById("eventName").addEventListener("input", e => {

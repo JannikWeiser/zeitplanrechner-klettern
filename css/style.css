@@ -13,12 +13,18 @@
 
 * { box-sizing: border-box; }
 
+html, body { height: 100%; }
+
 body {
   margin: 0;
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 button {
@@ -45,10 +51,11 @@ input, select {
 h1, h2, h3 { margin: 0; }
 
 .topbar {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 20px;
+  padding: 10px 20px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -63,10 +70,11 @@ h1, h2, h3 { margin: 0; }
 .file-label { display: inline-flex; align-items: center; }
 
 .days-bar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 20px;
+  padding: 6px 20px;
   background: #fbfbfc;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
@@ -96,32 +104,34 @@ h1, h2, h3 { margin: 0; }
 .btn-small { padding: 5px 10px; font-size: 13px; }
 
 .layout {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 260px 1fr;
   gap: 0;
-  min-height: 320px;
+  overflow: hidden;
 }
 
 .sidebar {
   background: var(--panel);
   border-right: 1px solid var(--border);
-  padding: 16px;
+  padding: 10px 12px;
   overflow-y: auto;
 }
-.sidebar h2 { font-size: 14px; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
-.add-round-buttons { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.btn-add { color: #fff; border: none; text-align: left; font-weight: 600; }
+.sidebar h2 { font-size: 12px; margin-bottom: 6px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.add-round-buttons { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.btn-add { color: #fff; border: none; text-align: left; font-weight: 600; padding: 6px 10px; font-size: 12.5px; }
 .btn-boulder { background: var(--color-boulder); }
 .btn-lead { background: var(--color-lead); }
 .btn-speed { background: var(--color-speed); }
 .btn-add:hover { filter: brightness(1.08); }
 
-.round-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.round-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .round-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 5px 8px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: #fff;
@@ -129,15 +139,15 @@ h1, h2, h3 { margin: 0; }
 }
 .round-item:hover { background: #f4f6f8; }
 .round-item.active { border-color: var(--text); box-shadow: 0 0 0 1px var(--text) inset; }
-.round-item .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.round-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .round-item .info { flex: 1; min-width: 0; }
-.round-item .rname { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.round-item .rtime { color: var(--text-muted); font-size: 12px; }
+.round-item .rname { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.round-item .rtime { color: var(--text-muted); font-size: 11px; }
 .round-item .del { color: var(--text-muted); background: none; border: none; padding: 2px 6px; }
 .round-item .del:hover { color: var(--danger); }
 
 .editor {
-  padding: 20px;
+  padding: 14px 20px;
   overflow-y: auto;
 }
 .editor-empty { color: var(--text-muted); padding: 40px 0; text-align: center; }
@@ -182,8 +192,16 @@ table.slots-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 table.slots-table th, table.slots-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
 table.slots-table th { background: #fafbfc; position: sticky; top: 0; }
 
-.gantt-section { padding: 20px; }
-.gantt-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 12px; flex-wrap: wrap; }
+.gantt-section {
+  flex: 0 0 50vh;
+  height: 50vh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.gantt-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 12px; flex-wrap: wrap; }
 .gantt-legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--text-muted); }
 .legend-item { display: flex; align-items: center; gap: 6px; }
 .legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
@@ -191,7 +209,7 @@ table.slots-table th { background: #fafbfc; position: sticky; top: 0; }
 .swatch-lead { background: var(--color-lead); }
 .swatch-speed { background: var(--color-speed); }
 
-.gantt-container { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.gantt-container { flex: 1 1 auto; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); min-height: 0; }
 .gantt-day { border-bottom: 1px solid var(--border); }
 .gantt-day:last-child { border-bottom: none; }
 .gantt-day-title { padding: 8px 14px; font-weight: 600; font-size: 13px; background: #fafbfc; border-bottom: 1px solid var(--border); }
@@ -248,8 +266,14 @@ table.slots-table th { background: #fafbfc; position: sticky; top: 0; }
 .gantt-toggle { background: none; border: none; color: var(--text-muted); font-size: 11px; text-decoration: underline; cursor: pointer; padding: 0 0 6px 14px; }
 
 @media print {
-  .topbar, .days-bar, .layout, #btnPrintGantt { display: none; }
+  @page { size: A4 landscape; margin: 10mm; }
+  .topbar, .days-bar, .layout, #btnPrintGantt, .gantt-legend { display: none; }
+  html, body { height: auto; overflow: visible; }
   body { background: #fff; }
-  .gantt-section { padding: 0; }
-  .gantt-container { border: none; overflow: visible; }
+  .gantt-section { flex: none; height: auto; padding: 0; border-top: none; }
+  .gantt-header { margin-bottom: 4px; }
+  .gantt-container { border: none; overflow: visible; flex: none; }
+  .gantt-day { page-break-after: always; break-after: page; }
+  .gantt-day:last-child { page-break-after: auto; break-after: auto; }
+  .gantt-day-title { font-size: 16px; }
 }
