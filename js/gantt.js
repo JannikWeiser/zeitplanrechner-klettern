@@ -1,0 +1,114 @@
+const PX_PER_MIN = 2.2;
+const expandedRounds = new Set();
+
+function renderGantt(container, event, computed) {
+  container.innerHTML = "";
+
+  if (computed.length === 0) {
+    container.innerHTML = '<div class="gantt-empty">Noch keine Runden angelegt.</div>';
+    return;
+  }
+
+  event.days.forEach(day => {
+    const dayRows = computed
+      .filter(c => c.round.dayId === day.id)
+      .sort((a, b) => a.startMin - b.startMin);
+
+    const dayEl = document.createElement("div");
+    dayEl.className = "gantt-day";
+
+    const title = document.createElement("div");
+    title.className = "gantt-day-title";
+    title.textContent = `${day.label || "Tag"} – ${formatDateDe(day.date)}`;
+    dayEl.appendChild(title);
+
+    if (dayRows.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "gantt-empty";
+      empty.textContent = "Keine Runden an diesem Tag.";
+      dayEl.appendChild(empty);
+      container.appendChild(dayEl);
+      return;
+    }
+
+    let dayMin = Math.min(480, ...dayRows.map(r => r.startMin));
+    let dayMax = Math.max(dayMin + 480, ...dayRows.map(r => r.endMin));
+    dayMin = Math.floor(dayMin / 60) * 60;
+    dayMax = Math.ceil(dayMax / 60) * 60;
+    const totalWidth = (dayMax - dayMin) * PX_PER_MIN;
+
+    const scale = document.createElement("div");
+    scale.className = "gantt-scale";
+    scale.style.width = totalWidth + "px";
+    for (let t = dayMin; t <= dayMax; t += 60) {
+      const tick = document.createElement("div");
+      tick.className = "tick";
+      tick.style.left = (t - dayMin) * PX_PER_MIN + "px";
+      tick.textContent = minutesToTime(t);
+      scale.appendChild(tick);
+    }
+    dayEl.appendChild(scale);
+
+    const rows = document.createElement("div");
+    rows.className = "gantt-rows";
+    rows.style.width = totalWidth + "px";
+
+    dayRows.forEach(c => {
+      const row = document.createElement("div");
+      row.className = "gantt-row";
+
+      const bar = document.createElement("div");
+      bar.className = `gantt-bar gantt-bar-${c.round.discipline}` + (c.conflict ? " conflict" : "");
+      bar.style.left = (c.startMin - dayMin) * PX_PER_MIN + "px";
+      bar.style.width = Math.max((c.endMin - c.startMin) * PX_PER_MIN, 40) + "px";
+      bar.textContent = `${c.round.name} (${minutesToTime(c.startMin)}–${minutesToTime(c.endMin)})`;
+      bar.title = c.conflict ? "Überschneidung mit anderer Runde am selben Tag!" : c.result.info || "";
+      bar.addEventListener("click", () => {
+        if (expandedRounds.has(c.round.id)) expandedRounds.delete(c.round.id);
+        else expandedRounds.add(c.round.id);
+        renderGantt(container, event, computed);
+      });
+      row.appendChild(bar);
+      rows.appendChild(row);
+
+      if (expandedRounds.has(c.round.id)) {
+        const details = document.createElement("div");
+        details.className = "gantt-details";
+        details.style.width = totalWidth + "px";
+
+        const groups = {};
+        (c.result.slots || []).forEach(s => {
+          if (!groups[s.group]) groups[s.group] = [];
+          groups[s.group].push(s);
+        });
+
+        Object.keys(groups).forEach(groupName => {
+          const subrow = document.createElement("div");
+          subrow.className = "gantt-subrow";
+          groups[groupName].forEach(s => {
+            const sub = document.createElement("div");
+            sub.className = `gantt-subbar gantt-bar-${c.round.discipline}`;
+            const absStart = c.startMin + s.startOffsetMin;
+            const absEnd = c.startMin + s.endOffsetMin;
+            sub.style.left = (absStart - dayMin) * PX_PER_MIN + "px";
+            sub.style.width = Math.max((absEnd - absStart) * PX_PER_MIN, 3) + "px";
+            sub.title = `${s.label}: ${minutesToTime(absStart)}–${minutesToTime(absEnd)}`;
+            subrow.appendChild(sub);
+          });
+          details.appendChild(subrow);
+        });
+
+        rows.appendChild(details);
+      }
+    });
+
+    dayEl.appendChild(rows);
+    container.appendChild(dayEl);
+  });
+}
+
+function formatDateDe(iso) {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+}
