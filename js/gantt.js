@@ -1,4 +1,4 @@
-const PX_PER_MIN = 2.2;
+const PX_PER_MIN = 3.6;
 const expandedRounds = new Set();
 
 function renderGantt(container, event, computed) {
@@ -62,13 +62,23 @@ function renderGantt(container, event, computed) {
       bar.style.left = (c.startMin - dayMin) * PX_PER_MIN + "px";
       bar.style.width = Math.max((c.endMin - c.startMin) * PX_PER_MIN, 40) + "px";
       bar.textContent = `${c.round.name} (${minutesToTime(c.startMin)}–${minutesToTime(c.endMin)})`;
-      bar.title = c.result.info || "";
+      bar.title = c.result.warning ? `⚠ ${c.result.warning}` : (c.result.info || "");
       bar.addEventListener("click", () => {
         if (expandedRounds.has(c.round.id)) expandedRounds.delete(c.round.id);
         else expandedRounds.add(c.round.id);
         renderGantt(container, event, computed);
       });
       row.appendChild(bar);
+
+      if (c.result.warning) {
+        const badge = document.createElement("div");
+        badge.className = "gantt-warning-badge";
+        badge.textContent = "⚠";
+        badge.title = c.result.warning;
+        badge.style.left = (c.startMin - dayMin) * PX_PER_MIN + "px";
+        row.appendChild(badge);
+      }
+
       rows.appendChild(row);
 
       if (expandedRounds.has(c.round.id)) {

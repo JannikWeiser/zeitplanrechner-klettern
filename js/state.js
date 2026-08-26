@@ -75,6 +75,7 @@ const Store = {
     const round = {
       id: uid(),
       discipline,
+      roundType: roundTypeKey,
       name: preset.label,
       dayId: this.event.days[0].id,
       startTime: "09:30",

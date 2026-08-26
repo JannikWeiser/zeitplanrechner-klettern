@@ -3,15 +3,61 @@
 // keine manuelle Eingabe nötig.
 const LEAD_MIN_ROUTE_GAP_MIN = 50;
 
-// Lead mit 2 Routen (Quali): Feld wird in zwei Hälften geteilt, die auf
-// unterschiedlichen Routen starten und nach der halben Feldgröße die Route wechseln
-// (Art. 2.1/4.4: Versatz um halbe Starterzahl, Route A/B parallel geklettert).
-// Dadurch klettert jede Route insgesamt "starters" Durchgänge, beide Wände laufen
-// durchgängig parallel -> Rundendauer = starters * climbTimeMin.
-function calcLead(params) {
-  const { starters, numRoutes, climbTimeMin } = params;
+function routeLetter(r) {
+  return String.fromCharCode(65 + r);
+}
 
-  if (numRoutes <= 1) {
+// N Routen, parallel: Athlet i (0-indiziert) startet in Gruppe g=i%N (Round-Robin) auf
+// Route g und durchläuft danach reihum alle weiteren Routen. Für einen festen "Zyklus-
+// Schritt" s belegen alle N Gruppen gleichzeitig N verschiedene Routen (zyklisches
+// Lateinquadrat) - dadurch sind alle Wände durchgehend parallel ausgelastet, Pause
+// zwischen zwei eigenen Routenversuchen ist konstant (block-1)*climbTimeMin.
+function calcLeadParallel(starters, numRoutes, climbTimeMin) {
+  const N = numRoutes;
+  const block = Math.ceil(starters / N);
+  const slots = [];
+  for (let i = 0; i < starters; i++) {
+    const g = i % N;
+    const p = Math.floor(i / N);
+    for (let s = 0; s < N; s++) {
+      const route = (g + s) % N;
+      const slotIdx = s * block + p;
+      slots.push({
+        label: `Athlet ${i + 1} – Route ${routeLetter(route)}`,
+        group: `Route ${routeLetter(route)}`,
+        startOffsetMin: slotIdx * climbTimeMin,
+        endOffsetMin: (slotIdx + 1) * climbTimeMin
+      });
+    }
+  }
+  return { slots, routeGapMin: (block - 1) * climbTimeMin };
+}
+
+// N Routen, sequentiell: Route 1 wird vom gesamten Feld komplett geklettert, dann erst
+// startet Route 2 usw. Pause zwischen zwei eigenen Routenversuchen ist für alle
+// Athlet:innen konstant (starters-1)*climbTimeMin (der/die letzte Kletternde einer Route
+// hat die kürzeste Pause, da die nächste Route direkt danach beginnt).
+function calcLeadSequential(starters, numRoutes, climbTimeMin) {
+  const slots = [];
+  for (let r = 0; r < numRoutes; r++) {
+    for (let i = 0; i < starters; i++) {
+      const slotIdx = r * starters + i;
+      slots.push({
+        label: `Athlet ${i + 1} – Route ${routeLetter(r)}`,
+        group: `Route ${routeLetter(r)}`,
+        startOffsetMin: slotIdx * climbTimeMin,
+        endOffsetMin: (slotIdx + 1) * climbTimeMin
+      });
+    }
+  }
+  return { slots, routeGapMin: (starters - 1) * climbTimeMin };
+}
+
+function calcLead(params) {
+  const { starters, numRoutes, climbTimeMin, parallel } = params;
+  const N = Math.max(1, numRoutes || 1);
+
+  if (N === 1) {
     const slots = [];
     for (let i = 0; i < starters; i++) {
       slots.push({
@@ -21,51 +67,20 @@ function calcLead(params) {
         endOffsetMin: (i + 1) * climbTimeMin
       });
     }
-    const durationMin = starters * climbTimeMin;
-    return { durationMin, slots, info: `1 Route, ${starters} Starter:innen sequentiell` };
+    return { durationMin: starters * climbTimeMin, slots, info: `1 Route, ${starters} Starter:innen sequentiell` };
   }
 
-  const half = Math.floor(starters / 2);
-  const routeGapMin = (half - 1) * climbTimeMin;
-  const slots = [];
+  const { slots, routeGapMin } = parallel
+    ? calcLeadParallel(starters, N, climbTimeMin)
+    : calcLeadSequential(starters, N, climbTimeMin);
 
-  for (let i = 0; i < half; i++) {
-    slots.push({
-      label: `Athlet ${i + 1} – Route A`,
-      group: "Route A",
-      startOffsetMin: i * climbTimeMin,
-      endOffsetMin: (i + 1) * climbTimeMin
-    });
-    slots.push({
-      label: `Athlet ${i + 1} – Route B`,
-      group: "Route B",
-      startOffsetMin: (i + half) * climbTimeMin,
-      endOffsetMin: (i + half + 1) * climbTimeMin
-    });
-  }
-  for (let i = half; i < starters; i++) {
-    const j = i - half;
-    slots.push({
-      label: `Athlet ${i + 1} – Route B`,
-      group: "Route B",
-      startOffsetMin: j * climbTimeMin,
-      endOffsetMin: (j + 1) * climbTimeMin
-    });
-    slots.push({
-      label: `Athlet ${i + 1} – Route A`,
-      group: "Route A",
-      startOffsetMin: (j + half) * climbTimeMin,
-      endOffsetMin: (j + half + 1) * climbTimeMin
-    });
-  }
-
-  const durationMin = starters * climbTimeMin;
+  const durationMin = Math.max(...slots.map(s => s.endOffsetMin));
   const gapOk = routeGapMin >= LEAD_MIN_ROUTE_GAP_MIN;
   return {
     durationMin,
     slots,
     routeGapMin,
-    gapWarning: gapOk ? null : `Pause zwischen den Routen beträgt bei dieser Starterzahl/Kletterzeit nur ${Math.round(routeGapMin)} Min (Regelwerk: mind. ${LEAD_MIN_ROUTE_GAP_MIN} Min). Mehr Starter:innen oder längere Kletterzeit würden das beheben.`,
-    info: `2 Routen parallel, Versatz ${half} Athlet:innen, Pause zwischen Routen: ${Math.round(routeGapMin)} Min`
+    warning: gapOk ? null : `Pause zwischen den Routen beträgt bei dieser Konfiguration nur ${Math.round(routeGapMin)} Min (Regelwerk: mind. ${LEAD_MIN_ROUTE_GAP_MIN} Min). Mehr Starter:innen, längere Kletterzeit oder sequentiell statt parallel würden das beheben.`,
+    info: `${N} Routen ${parallel ? "parallel" : "sequentiell"}, Pause zwischen Routen: ${Math.round(routeGapMin)} Min`
   };
 }

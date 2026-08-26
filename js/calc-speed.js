@@ -29,22 +29,25 @@ function buildQuadBracket(finalistCount) {
   return rounds;
 }
 
+// Pro Race starten immer 2 Athlet:innen gleichzeitig (Lane A + Lane B), daher ist die
+// Anzahl geplanter Race-Slots nur halb so groß wie die Summe aller Einzel-Läufe.
 function calcSpeedQuali(params) {
   const { starters, runsPerAthlete, timePerRunMin } = params;
   const totalRuns = starters * runsPerAthlete;
+  const totalRaces = Math.ceil(totalRuns / 2);
   const slots = [];
-  for (let i = 0; i < totalRuns; i++) {
+  for (let i = 0; i < totalRaces; i++) {
     slots.push({
-      label: `Lauf ${i + 1}`,
+      label: `Race ${i + 1} (2 Athlet:innen)`,
       group: "Quali",
       startOffsetMin: i * timePerRunMin,
       endOffsetMin: (i + 1) * timePerRunMin
     });
   }
   return {
-    durationMin: totalRuns * timePerRunMin,
+    durationMin: totalRaces * timePerRunMin,
     slots,
-    info: `${starters} Starter:innen × ${runsPerAthlete} Läufe = ${totalRuns} Läufe`
+    info: `${starters} Starter:innen × ${runsPerAthlete} Läufe = ${totalRuns} Einzelläufe, je 2 gleichzeitig an der Wand = ${totalRaces} Races`
   };
 }
 
@@ -60,10 +63,18 @@ function normalizeSpeedFinalParams(params) {
 // Kategorien mit unterschiedlicher Finalist:innenzahl werden über "level" (Teilnehmerzahl
 // beim Rundenstart) synchronisiert - eine Kategorie ohne Runde auf einem Level pausiert
 // dort einfach, bis die anderen so weit sind.
+//
+// "Mindestpause zwischen Races" ist die Erholzeit EINES Athlet:in zwischen zwei eigenen
+// Läufen, nicht der Takt zwischen zwei beliebigen Races an der Wand - während ein:e
+// Athlet:in pausiert, laufen andere Paarungen ganz normal weiter. Races werden daher im
+// Takt von raceTimeMin ohne künstliche Streckung geplant; die Mindestpause wird
+// nachträglich als Plausibilitätscheck ausgewertet: pro Kategorie wird der Abstand
+// zwischen dem Ende ihres letzten Race auf einem Level und dem Start ihres ersten Race
+// auf dem nächsten Level ermittelt (Worst Case: Athlet:in läuft zuletzt auf Level L und
+// zuerst auf Level L').
 function calcSpeedFinal(params) {
   const { raceTimeMin, minGapMin } = params;
   const categories = normalizeSpeedFinalParams(params);
-  const raceSlot = Math.max(raceTimeMin, minGapMin || 0);
 
   const catBrackets = categories.map(cat => ({
     name: cat.name,
@@ -72,26 +83,42 @@ function calcSpeedFinal(params) {
   const levels = [...new Set(catBrackets.flatMap(c => c.rounds.map(r => r.level)))].sort((a, b) => b - a);
 
   const slots = [];
+  const catLevelSpans = {};
   let raceIndex = 0;
   levels.forEach(level => {
     catBrackets.forEach(cat => {
       const round = cat.rounds.find(r => r.level === level);
       if (!round) return;
+      const spanStart = raceIndex * raceTimeMin;
       for (let i = 0; i < round.races; i++) {
         slots.push({
           label: `${cat.name} – ${round.label} – Race ${i + 1}`,
           group: `${cat.name} – ${round.label}`,
-          startOffsetMin: raceIndex * raceSlot,
-          endOffsetMin: raceIndex * raceSlot + raceTimeMin
+          startOffsetMin: raceIndex * raceTimeMin,
+          endOffsetMin: raceIndex * raceTimeMin + raceTimeMin
         });
         raceIndex++;
       }
+      const spanEnd = raceIndex * raceTimeMin;
+      (catLevelSpans[cat.name] = catLevelSpans[cat.name] || []).push({ level, startOffsetMin: spanStart, endOffsetMin: spanEnd });
     });
   });
 
+  let minPause = Infinity;
+  Object.values(catLevelSpans).forEach(spans => {
+    spans.sort((a, b) => b.level - a.level);
+    for (let k = 0; k < spans.length - 1; k++) {
+      const gap = spans[k + 1].startOffsetMin - spans[k].endOffsetMin;
+      if (gap < minPause) minPause = gap;
+    }
+  });
+  const pauseOk = !isFinite(minPause) || minPause >= minGapMin;
+
   return {
-    durationMin: raceIndex * raceSlot,
+    durationMin: raceIndex * raceTimeMin,
     slots,
-    info: `${categories.length} Kategorie(n) verzahnt, ${raceIndex} Races insgesamt, min. ${minGapMin} Min zwischen Races`
+    minPause: isFinite(minPause) ? minPause : null,
+    warning: pauseOk ? null : `Kürzeste Pause für eine:n Athlet:in zwischen zwei eigenen Läufen beträgt nur ${Math.round(minPause)} Min (Ziel: mind. ${minGapMin} Min). Reihenfolge der Kategorien/Paarungen anpassen oder mehr Kategorien parallel verzahnen, um mehr Pufferzeit zu erzeugen.`,
+    info: `${categories.length} Kategorie(n) verzahnt, ${raceIndex} Races à ${raceTimeMin} Min` + (isFinite(minPause) ? `, kürzeste Athlet:innen-Pause: ${Math.round(minPause)} Min` : "")
   };
 }

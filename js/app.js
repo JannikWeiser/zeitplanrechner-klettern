@@ -7,12 +7,13 @@ const FIELD_DEFS = {
     { key: "numBoulders", label: "Anzahl Boulder", type: "number" },
     { key: "climbTimeMin", label: "Boulderzeit (Min)", type: "number", step: 0.5 },
     { key: "transitionSec", label: "Wechselzeit (Sek)", type: "number" },
-    { key: "numGroups", label: "Anzahl Gruppen", type: "number", hint: "Rotationslogik ist frei wählbar (siehe Hinweis unten)" },
-    { key: "offsetIntervals", label: "Versatz zwischen Gruppen (Intervalle)", type: "number" }
+    { key: "restIntervals", label: "Versatz zwischen eigenen Boulder-Versuchen (Intervalle)", type: "number", hint: "Rotationslogik ist frei wählbar (siehe Hinweis unten)" },
+    { key: "numSets", label: "Anzahl Sets (physische Zonen)", type: "select", options: [[1, "1 Set"], [2, "2 Sets (Feld startet in 2 Zonen)"]] }
   ],
   lead: [
     { key: "starters", label: "Starter:innen", type: "number" },
-    { key: "numRoutes", label: "Anzahl Routen", type: "select", options: [[1, "1 Route"], [2, "2 Routen (parallel)"]] },
+    { key: "numRoutes", label: "Anzahl Routen", type: "number" },
+    { key: "parallel", label: "Parallel geklettert", type: "checkbox" },
     { key: "climbTimeMin", label: "Kletterzeit (Min, Rechenwert)", type: "number", step: 0.5, hint: "Regelwerk-Maximum 6 Min; 5 Min ist der realistische Durchschnitt fürs Timing" }
   ],
   speed_quali: [
@@ -22,7 +23,7 @@ const FIELD_DEFS = {
   ],
   speed_final: [
     { key: "raceTimeMin", label: "Zeit pro Race (Min)", type: "number", step: 0.5 },
-    { key: "minGapMin", label: "Mindestpause zwischen Races (Min)", type: "number", hint: "Regelwerk: min. 5 Min" }
+    { key: "minGapMin", label: "Mindestpause pro Athlet:in zwischen eigenen Läufen (Min)", type: "number", hint: "Races selbst laufen im Takt von \"Zeit pro Race\" durch - andere Paarungen laufen ja weiter, während eine:r pausiert. Regelwerk-Richtwert: 5 Min" }
   ]
 };
 
@@ -70,12 +71,12 @@ function renderDays() {
     labelInput.type = "text";
     labelInput.value = day.label;
     labelInput.style.width = "70px";
-    labelInput.addEventListener("input", () => { day.label = labelInput.value; Store.save(); renderAll(); });
+    bindCommit(labelInput, () => { day.label = labelInput.value; Store.save(); renderAll(); });
 
     const dateInput = document.createElement("input");
     dateInput.type = "date";
     dateInput.value = day.date;
-    dateInput.addEventListener("input", () => { day.date = dateInput.value; Store.save(); renderAll(); });
+    bindCommit(dateInput, () => { day.date = dateInput.value; Store.save(); renderAll(); });
 
     const removeBtn = document.createElement("button");
     removeBtn.textContent = "×";
@@ -155,7 +156,7 @@ function renderEditor(computed) {
   const nameInput = document.createElement("input");
   nameInput.className = "rname-input";
   nameInput.value = round.name;
-  nameInput.addEventListener("input", () => { round.name = nameInput.value; Store.save(); renderAll(); });
+  bindCommit(nameInput, () => { round.name = nameInput.value; Store.save(); renderAll(); });
   if (focusNameOnRender) {
     focusNameOnRender = false;
     setTimeout(() => { nameInput.focus(); nameInput.select(); }, 0);
@@ -167,15 +168,16 @@ function renderEditor(computed) {
   header.appendChild(summary);
   panel.appendChild(header);
 
-  if (round.discipline === "speed") {
+  const roundTypeOptions = Object.keys(PRESETS[round.discipline]).map(key => [key, ROUND_TYPE_LABELS[key] || key]);
+  if (roundTypeOptions.length > 1) {
     const kindField = document.createElement("div");
     kindField.className = "form-grid";
-    kindField.appendChild(buildField("Rundenart", "select",
-      [["quali", "Qualifikation (Läufe)"], ["final", "Finale (K.-o.)"]],
-      round.params.kind,
+    kindField.appendChild(buildField("Rundenart", "select", roundTypeOptions,
+      round.discipline === "speed" ? round.params.kind : round.roundType,
       val => {
-        const preset = getPreset("speed", val);
+        const preset = getPreset(round.discipline, val);
         round.params = JSON.parse(JSON.stringify(preset.params));
+        round.roundType = val;
         round.name = preset.label;
         Store.save();
         renderAll();
@@ -188,7 +190,7 @@ function renderEditor(computed) {
 
   fieldSetFor(round).forEach(def => {
     const el = buildField(def.label, def.type, def.options, round.params[def.key], val => {
-      round.params[def.key] = def.type === "number" ? Number(val) : (def.type === "select" && /^\d+$/.test(String(val)) ? Number(val) : val);
+      round.params[def.key] = convertFieldValue(def.type, val);
       Store.save();
       renderAll();
     }, def.step, def.hint);
@@ -200,14 +202,14 @@ function renderEditor(computed) {
   if (round.discipline === "boulder") {
     const note = document.createElement("div");
     note.className = "warning-box";
-    note.textContent = "Hinweis: Das Regelwerk schreibt Kletterzeit (5/4 Min) und Wechselzeit (15 Sek) fest, legt die Gruppen-/Rotationslogik aber nicht fest. \"Anzahl Gruppen\" und \"Versatz\" bilden ab, nach wie vielen Intervallen die nächste Gruppe an Boulder 1 startet - passe beides an eure tatsächliche Aufteilung an.";
+    note.textContent = "Hinweis: Das Regelwerk schreibt Kletterzeit (5/4 Min) und Wechselzeit (15 Sek) fest, legt die Rotationslogik aber nicht fest. Jede:r Athlet:in betritt Boulder 1 im eigenen Startintervall und wechselt alle \"Versatz\"-Intervalle zum nächsten Boulder - passe das an eure tatsächliche Aufteilung an.";
     panel.appendChild(note);
   }
 
-  if (round.discipline === "lead" && round.params.numRoutes >= 2 && c.result.gapWarning) {
+  if (c.result.warning) {
     const warn = document.createElement("div");
     warn.className = "warning-box";
-    warn.textContent = "⚠ " + c.result.gapWarning;
+    warn.textContent = "⚠ " + c.result.warning;
     panel.appendChild(warn);
   }
 
@@ -262,7 +264,7 @@ function buildCategoryEditor(round) {
     const nameInput = document.createElement("input");
     nameInput.type = "text";
     nameInput.value = cat.name;
-    nameInput.addEventListener("input", () => { cat.name = nameInput.value; Store.save(); renderAll(); });
+    bindCommit(nameInput, () => { cat.name = nameInput.value; Store.save(); renderAll(); });
 
     const countSelect = document.createElement("select");
     SPEED_FINALIST_OPTIONS.forEach(([val, text]) => {
@@ -272,7 +274,7 @@ function buildCategoryEditor(round) {
       if (val === cat.finalistCount) opt.selected = true;
       countSelect.appendChild(opt);
     });
-    countSelect.addEventListener("input", () => { cat.finalistCount = Number(countSelect.value); Store.save(); renderAll(); });
+    countSelect.addEventListener("change", () => { cat.finalistCount = Number(countSelect.value); Store.save(); renderAll(); });
 
     const modeSelect = document.createElement("select");
     SPEED_MODE_OPTIONS.forEach(([val, text]) => {
@@ -282,7 +284,7 @@ function buildCategoryEditor(round) {
       if (val === cat.mode) opt.selected = true;
       modeSelect.appendChild(opt);
     });
-    modeSelect.addEventListener("input", () => { cat.mode = modeSelect.value; Store.save(); renderAll(); });
+    modeSelect.addEventListener("change", () => { cat.mode = modeSelect.value; Store.save(); renderAll(); });
 
     const del = document.createElement("button");
     del.className = "del";
@@ -319,6 +321,25 @@ function buildCategoryEditor(round) {
   return section;
 }
 
+// Re-rendert bei jedem Tastendruck (renderAll baut das ganze Panel neu auf) hätte den
+// Fokus ständig verloren und Eingaben abgebrochen (z.B. bei Leerzeichen). Änderungen
+// werden daher erst beim Verlassen des Felds (blur) übernommen; Enter löst das gezielt aus.
+function bindCommit(input, commit) {
+  input.addEventListener("change", commit);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.keyCode === 13 || e.code === "Enter" || e.code === "NumpadEnter") {
+      e.preventDefault();
+      input.blur();
+    }
+  });
+}
+
+function convertFieldValue(type, rawValue) {
+  if (type === "number") return Number(rawValue);
+  if (type === "select" && /^\d+$/.test(String(rawValue))) return Number(rawValue);
+  return rawValue;
+}
+
 function buildField(label, type, options, value, onChange, step, hint) {
   const wrap = document.createElement("div");
   wrap.className = "field";
@@ -336,13 +357,19 @@ function buildField(label, type, options, value, onChange, step, hint) {
       if (String(val) === String(value)) opt.selected = true;
       input.appendChild(opt);
     });
+    input.addEventListener("change", () => onChange(input.value));
+  } else if (type === "checkbox") {
+    input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = !!value;
+    input.addEventListener("change", () => onChange(input.checked));
   } else {
     input = document.createElement("input");
     input.type = type;
     input.value = value;
     if (step) input.step = step;
+    bindCommit(input, () => onChange(input.value));
   }
-  input.addEventListener("input", () => onChange(input.value));
   wrap.appendChild(input);
 
   if (hint) {
@@ -371,6 +398,7 @@ function init() {
   });
 
   document.getElementById("btnAddDay").addEventListener("click", () => { Store.addDay(); renderAll(); });
+  document.getElementById("btnPrintGantt").addEventListener("click", () => window.print());
 
   document.querySelectorAll(".btn-add").forEach(btn => {
     btn.addEventListener("click", () => {
