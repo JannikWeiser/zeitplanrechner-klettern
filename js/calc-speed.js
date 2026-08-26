@@ -1,15 +1,17 @@
 const SPEED_DUEL_ROUND_NAMES = { 32: "Runde der letzten 32", 16: "Achtelfinale", 8: "Viertelfinale", 4: "Halbfinale" };
 
 // Klassischer 1-gegen-1 K.o.-Baum (Speed2, Team-Speed): pro Runde halbiert sich das
-// Feld, die letzten beiden Runden liefern Finale + kleines Finale (Art. 2.5).
+// Feld, die letzten beiden Runden liefern Finale + kleines Finale (Art. 2.5). "level"
+// = Teilnehmerzahl beim Einstieg in die Runde, dient dem Verzahnen mehrerer Kategorien
+// (z.B. Achtelfinale W direkt gefolgt von Achtelfinale M, siehe calcSpeedFinal).
 function buildDuelBracket(finalistCount) {
   const rounds = [];
   let n = finalistCount;
   while (n > 2) {
-    rounds.push({ label: SPEED_DUEL_ROUND_NAMES[n] || `Runde der letzten ${n}`, races: n / 2 });
+    rounds.push({ level: n, label: SPEED_DUEL_ROUND_NAMES[n] || `Runde der letzten ${n}`, races: n / 2 });
     n = n / 2;
   }
-  rounds.push({ label: "Finale & kleines Finale", races: 2 });
+  rounds.push({ level: 2, label: "Finale & kleines Finale", races: 2 });
   return rounds;
 }
 
@@ -20,10 +22,10 @@ function buildQuadBracket(finalistCount) {
   let n = finalistCount;
   while (n > 4) {
     const races = n / 4;
-    rounds.push({ label: `Runde der letzten ${n}`, races });
+    rounds.push({ level: n, label: `Runde der letzten ${n}`, races });
     n = races * 2;
   }
-  rounds.push({ label: "Finale (4er-Lauf)", races: 1 });
+  rounds.push({ level: 4, label: "Finale (4er-Lauf)", races: 1 });
   return rounds;
 }
 
@@ -46,28 +48,50 @@ function calcSpeedQuali(params) {
   };
 }
 
+// Ältere gespeicherte Runden hatten finalistCount/mode direkt auf params statt einer
+// categories-Liste - hier einmalig in die neue Form umhängen, statt eine Migration zu bauen.
+function normalizeSpeedFinalParams(params) {
+  if (params.categories) return params.categories;
+  return [{ name: "Kategorie 1", finalistCount: params.finalistCount || 16, mode: params.mode || "duel" }];
+}
+
+// Mehrere Kategorien im Finale werden Runde für Runde verzahnt statt nacheinander
+// komplett abgearbeitet (z.B. Achtelfinale W, Achtelfinale M, Viertelfinale W, ...).
+// Kategorien mit unterschiedlicher Finalist:innenzahl werden über "level" (Teilnehmerzahl
+// beim Rundenstart) synchronisiert - eine Kategorie ohne Runde auf einem Level pausiert
+// dort einfach, bis die anderen so weit sind.
 function calcSpeedFinal(params) {
-  const { finalistCount, mode, raceTimeMin, minGapMin } = params;
+  const { raceTimeMin, minGapMin } = params;
+  const categories = normalizeSpeedFinalParams(params);
   const raceSlot = Math.max(raceTimeMin, minGapMin || 0);
-  const rounds = mode === "quad" ? buildQuadBracket(finalistCount) : buildDuelBracket(finalistCount);
+
+  const catBrackets = categories.map(cat => ({
+    name: cat.name,
+    rounds: cat.mode === "quad" ? buildQuadBracket(cat.finalistCount) : buildDuelBracket(cat.finalistCount)
+  }));
+  const levels = [...new Set(catBrackets.flatMap(c => c.rounds.map(r => r.level)))].sort((a, b) => b - a);
 
   const slots = [];
   let raceIndex = 0;
-  rounds.forEach(round => {
-    for (let i = 0; i < round.races; i++) {
-      slots.push({
-        label: `${round.label} – Race ${i + 1}`,
-        group: round.label,
-        startOffsetMin: raceIndex * raceSlot,
-        endOffsetMin: raceIndex * raceSlot + raceTimeMin
-      });
-      raceIndex++;
-    }
+  levels.forEach(level => {
+    catBrackets.forEach(cat => {
+      const round = cat.rounds.find(r => r.level === level);
+      if (!round) return;
+      for (let i = 0; i < round.races; i++) {
+        slots.push({
+          label: `${cat.name} – ${round.label} – Race ${i + 1}`,
+          group: `${cat.name} – ${round.label}`,
+          startOffsetMin: raceIndex * raceSlot,
+          endOffsetMin: raceIndex * raceSlot + raceTimeMin
+        });
+        raceIndex++;
+      }
+    });
   });
 
   return {
     durationMin: raceIndex * raceSlot,
     slots,
-    info: `${finalistCount} Finalist:innen, ${raceIndex} Races, min. ${minGapMin} Min zwischen Races`
+    info: `${categories.length} Kategorie(n) verzahnt, ${raceIndex} Races insgesamt, min. ${minGapMin} Min zwischen Races`
   };
 }

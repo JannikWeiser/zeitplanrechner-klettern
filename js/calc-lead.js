@@ -1,10 +1,15 @@
+// Regelwerk Art. 4.4: mind. 50 Min zwischen Ende des Versuchs auf einer Route und
+// Start auf der anderen Route (pro Athlet:in). Fixer Wert, wird automatisch geprüft -
+// keine manuelle Eingabe nötig.
+const LEAD_MIN_ROUTE_GAP_MIN = 50;
+
 // Lead mit 2 Routen (Quali): Feld wird in zwei Hälften geteilt, die auf
 // unterschiedlichen Routen starten und nach der halben Feldgröße die Route wechseln
 // (Art. 2.1/4.4: Versatz um halbe Starterzahl, Route A/B parallel geklettert).
 // Dadurch klettert jede Route insgesamt "starters" Durchgänge, beide Wände laufen
-// durchgängig parallel -> Rundendauer = starters * climbTimeMin (Regelwerk-Minimum 50 Min).
+// durchgängig parallel -> Rundendauer = starters * climbTimeMin.
 function calcLead(params) {
-  const { starters, numRoutes, climbTimeMin, minGapMin } = params;
+  const { starters, numRoutes, climbTimeMin } = params;
 
   if (numRoutes <= 1) {
     const slots = [];
@@ -16,11 +21,12 @@ function calcLead(params) {
         endOffsetMin: (i + 1) * climbTimeMin
       });
     }
-    const durationMin = Math.max(starters * climbTimeMin, minGapMin || 0);
+    const durationMin = starters * climbTimeMin;
     return { durationMin, slots, info: `1 Route, ${starters} Starter:innen sequentiell` };
   }
 
   const half = Math.floor(starters / 2);
+  const routeGapMin = (half - 1) * climbTimeMin;
   const slots = [];
 
   for (let i = 0; i < half; i++) {
@@ -53,10 +59,13 @@ function calcLead(params) {
     });
   }
 
-  const durationMin = Math.max(starters * climbTimeMin, minGapMin || 0);
+  const durationMin = starters * climbTimeMin;
+  const gapOk = routeGapMin >= LEAD_MIN_ROUTE_GAP_MIN;
   return {
     durationMin,
     slots,
-    info: `2 Routen parallel, Versatz ${half} Athlet:innen, jede Route ${starters} Durchgänge`
+    routeGapMin,
+    gapWarning: gapOk ? null : `Pause zwischen den Routen beträgt bei dieser Starterzahl/Kletterzeit nur ${Math.round(routeGapMin)} Min (Regelwerk: mind. ${LEAD_MIN_ROUTE_GAP_MIN} Min). Mehr Starter:innen oder längere Kletterzeit würden das beheben.`,
+    info: `2 Routen parallel, Versatz ${half} Athlet:innen, Pause zwischen Routen: ${Math.round(routeGapMin)} Min`
   };
 }

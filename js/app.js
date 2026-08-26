@@ -1,4 +1,5 @@
 let selectedRoundId = null;
+let focusNameOnRender = false;
 
 const FIELD_DEFS = {
   boulder: [
@@ -12,8 +13,7 @@ const FIELD_DEFS = {
   lead: [
     { key: "starters", label: "Starter:innen", type: "number" },
     { key: "numRoutes", label: "Anzahl Routen", type: "select", options: [[1, "1 Route"], [2, "2 Routen (parallel)"]] },
-    { key: "climbTimeMin", label: "Kletterzeit (Min)", type: "number", step: 0.5 },
-    { key: "minGapMin", label: "Mindestdauer Runde (Min)", type: "number", hint: "Regelwerk: min. 50 Min zwischen Routenwechsel" }
+    { key: "climbTimeMin", label: "Kletterzeit (Min, Rechenwert)", type: "number", step: 0.5, hint: "Regelwerk-Maximum 6 Min; 5 Min ist der realistische Durchschnitt fürs Timing" }
   ],
   speed_quali: [
     { key: "starters", label: "Starter:innen", type: "number" },
@@ -21,8 +21,6 @@ const FIELD_DEFS = {
     { key: "timePerRunMin", label: "Zeit pro Lauf (Min)", type: "number", step: 0.25 }
   ],
   speed_final: [
-    { key: "finalistCount", label: "Anzahl Finalist:innen", type: "select", options: [[4, "4"], [8, "8"], [16, "16"], [32, "32"]] },
-    { key: "mode", label: "Format", type: "select", options: [["duel", "Speed2 / Team (1 vs 1)"], ["quad", "Speed4 (4er-Läufe)"]] },
     { key: "raceTimeMin", label: "Zeit pro Race (Min)", type: "number", step: 0.5 },
     { key: "minGapMin", label: "Mindestpause zwischen Races (Min)", type: "number", hint: "Regelwerk: min. 5 Min" }
   ]
@@ -42,25 +40,15 @@ function calcRound(round) {
   return { durationMin: 0, slots: [], info: "" };
 }
 
+// Überschneidende Zeiten sind erwünscht (mehrere Kategorien/Wände laufen bewusst
+// parallel), daher gibt es hier bewusst keine Konflikterkennung mehr.
 function computeAll() {
   const event = Store.event;
-  const computed = event.rounds.map(round => {
+  return event.rounds.map(round => {
     const result = calcRound(round);
     const startMin = timeToMinutes(round.startTime);
-    return { round, result, startMin, endMin: startMin + result.durationMin, conflict: false };
+    return { round, result, startMin, endMin: startMin + result.durationMin };
   });
-
-  for (let i = 0; i < computed.length; i++) {
-    for (let j = i + 1; j < computed.length; j++) {
-      const a = computed[i], b = computed[j];
-      if (a.round.dayId !== b.round.dayId) continue;
-      if (a.startMin < b.endMin && b.startMin < a.endMin) {
-        a.conflict = true;
-        b.conflict = true;
-      }
-    }
-  }
-  return computed;
 }
 
 function renderAll() {
@@ -110,7 +98,7 @@ function renderRoundList(computed) {
   Store.event.rounds.forEach(round => {
     const c = byId[round.id];
     const li = document.createElement("li");
-    li.className = "round-item" + (round.id === selectedRoundId ? " active" : "") + (c.conflict ? " conflict" : "");
+    li.className = "round-item" + (round.id === selectedRoundId ? " active" : "");
 
     const dot = document.createElement("span");
     dot.className = "dot";
@@ -168,6 +156,10 @@ function renderEditor(computed) {
   nameInput.className = "rname-input";
   nameInput.value = round.name;
   nameInput.addEventListener("input", () => { round.name = nameInput.value; Store.save(); renderAll(); });
+  if (focusNameOnRender) {
+    focusNameOnRender = false;
+    setTimeout(() => { nameInput.focus(); nameInput.select(); }, 0);
+  }
   const summary = document.createElement("div");
   summary.className = "editor-summary";
   summary.innerHTML = `Dauer: <strong>${formatDuration(c.result.durationMin)}</strong> &nbsp;·&nbsp; Ende: <strong>${minutesToTime(c.endMin)}</strong> Uhr`;
@@ -175,25 +167,10 @@ function renderEditor(computed) {
   header.appendChild(summary);
   panel.appendChild(header);
 
-  if (c.conflict) {
-    const warn = document.createElement("div");
-    warn.className = "warning-box";
-    warn.textContent = "⚠ Diese Runde überschneidet sich zeitlich mit einer anderen Runde am selben Tag.";
-    panel.appendChild(warn);
-  }
-
-  const grid = document.createElement("div");
-  grid.className = "form-grid";
-
-  grid.appendChild(buildField("Tag", "select",
-    Store.event.days.map(d => [d.id, `${d.label} (${formatDateDe(d.date)})`]),
-    round.dayId, val => { round.dayId = val; Store.save(); renderAll(); }));
-
-  grid.appendChild(buildField("Startzeit", "time", null, round.startTime,
-    val => { round.startTime = val; Store.save(); renderAll(); }));
-
   if (round.discipline === "speed") {
-    grid.appendChild(buildField("Rundenart", "select",
+    const kindField = document.createElement("div");
+    kindField.className = "form-grid";
+    kindField.appendChild(buildField("Rundenart", "select",
       [["quali", "Qualifikation (Läufe)"], ["final", "Finale (K.-o.)"]],
       round.params.kind,
       val => {
@@ -203,7 +180,11 @@ function renderEditor(computed) {
         Store.save();
         renderAll();
       }));
+    panel.appendChild(kindField);
   }
+
+  const grid = document.createElement("div");
+  grid.className = "form-grid";
 
   fieldSetFor(round).forEach(def => {
     const el = buildField(def.label, def.type, def.options, round.params[def.key], val => {
@@ -223,6 +204,26 @@ function renderEditor(computed) {
     panel.appendChild(note);
   }
 
+  if (round.discipline === "lead" && round.params.numRoutes >= 2 && c.result.gapWarning) {
+    const warn = document.createElement("div");
+    warn.className = "warning-box";
+    warn.textContent = "⚠ " + c.result.gapWarning;
+    panel.appendChild(warn);
+  }
+
+  if (round.discipline === "speed" && round.params.kind === "final") {
+    panel.appendChild(buildCategoryEditor(round));
+  }
+
+  const timeGrid = document.createElement("div");
+  timeGrid.className = "form-grid";
+  timeGrid.appendChild(buildField("Tag", "select",
+    Store.event.days.map(d => [d.id, `${d.label} (${formatDateDe(d.date)})`]),
+    round.dayId, val => { round.dayId = val; Store.save(); renderAll(); }));
+  timeGrid.appendChild(buildField("Startzeit", "time", null, round.startTime,
+    val => { round.startTime = val; Store.save(); renderAll(); }));
+  panel.appendChild(timeGrid);
+
   const slotsWrap = document.createElement("div");
   slotsWrap.className = "slots-table-wrap";
   const table = document.createElement("table");
@@ -239,6 +240,83 @@ function renderEditor(computed) {
   table.appendChild(tbody);
   slotsWrap.appendChild(table);
   panel.appendChild(slotsWrap);
+}
+
+const SPEED_FINALIST_OPTIONS = [[4, "4"], [8, "8"], [16, "16"], [32, "32"]];
+const SPEED_MODE_OPTIONS = [["duel", "Speed2 / Team (1 vs 1)"], ["quad", "Speed4 (4er-Läufe)"]];
+
+// Mehrere Kategorien (z.B. U17w/U17m) werden im Finale rundenweise verzahnt
+// (calcSpeedFinal) - hier die Liste editierbar machen: hinzufügen, benennen,
+// Finalist:innenzahl + Format je Kategorie einstellen, entfernen.
+function buildCategoryEditor(round) {
+  const section = document.createElement("div");
+  section.className = "category-section";
+  const h = document.createElement("h3");
+  h.textContent = "Kategorien (werden im Finale rundenweise verzahnt, z. B. Achtelfinale W → Achtelfinale M → Viertelfinale W → …)";
+  section.appendChild(h);
+
+  round.params.categories.forEach((cat, idx) => {
+    const row = document.createElement("div");
+    row.className = "category-row";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = cat.name;
+    nameInput.addEventListener("input", () => { cat.name = nameInput.value; Store.save(); renderAll(); });
+
+    const countSelect = document.createElement("select");
+    SPEED_FINALIST_OPTIONS.forEach(([val, text]) => {
+      const opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = text;
+      if (val === cat.finalistCount) opt.selected = true;
+      countSelect.appendChild(opt);
+    });
+    countSelect.addEventListener("input", () => { cat.finalistCount = Number(countSelect.value); Store.save(); renderAll(); });
+
+    const modeSelect = document.createElement("select");
+    SPEED_MODE_OPTIONS.forEach(([val, text]) => {
+      const opt = document.createElement("option");
+      opt.value = val;
+      opt.textContent = text;
+      if (val === cat.mode) opt.selected = true;
+      modeSelect.appendChild(opt);
+    });
+    modeSelect.addEventListener("input", () => { cat.mode = modeSelect.value; Store.save(); renderAll(); });
+
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "🗑";
+    del.title = "Kategorie entfernen";
+    del.disabled = round.params.categories.length <= 1;
+    del.addEventListener("click", () => {
+      round.params.categories.splice(idx, 1);
+      Store.save();
+      renderAll();
+    });
+
+    row.appendChild(nameInput);
+    row.appendChild(countSelect);
+    row.appendChild(modeSelect);
+    row.appendChild(del);
+    section.appendChild(row);
+  });
+
+  const addBtn = document.createElement("button");
+  addBtn.className = "btn-small";
+  addBtn.textContent = "+ Kategorie hinzufügen";
+  addBtn.addEventListener("click", () => {
+    round.params.categories.push({
+      name: `Kategorie ${round.params.categories.length + 1}`,
+      finalistCount: 16,
+      mode: "duel"
+    });
+    Store.save();
+    renderAll();
+  });
+  section.appendChild(addBtn);
+
+  return section;
 }
 
 function buildField(label, type, options, value, onChange, step, hint) {
@@ -299,6 +377,7 @@ function init() {
       const discipline = btn.dataset.discipline;
       const round = Store.addRound(discipline, "quali");
       selectedRoundId = round.id;
+      focusNameOnRender = true;
       renderAll();
     });
   });

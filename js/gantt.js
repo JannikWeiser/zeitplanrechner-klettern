@@ -58,11 +58,11 @@ function renderGantt(container, event, computed) {
       row.className = "gantt-row";
 
       const bar = document.createElement("div");
-      bar.className = `gantt-bar gantt-bar-${c.round.discipline}` + (c.conflict ? " conflict" : "");
+      bar.className = `gantt-bar gantt-bar-${c.round.discipline}`;
       bar.style.left = (c.startMin - dayMin) * PX_PER_MIN + "px";
       bar.style.width = Math.max((c.endMin - c.startMin) * PX_PER_MIN, 40) + "px";
       bar.textContent = `${c.round.name} (${minutesToTime(c.startMin)}–${minutesToTime(c.endMin)})`;
-      bar.title = c.conflict ? "Überschneidung mit anderer Runde am selben Tag!" : c.result.info || "";
+      bar.title = c.result.info || "";
       bar.addEventListener("click", () => {
         if (expandedRounds.has(c.round.id)) expandedRounds.delete(c.round.id);
         else expandedRounds.add(c.round.id);
