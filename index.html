@@ -11,9 +11,12 @@
 <header class="topbar">
   <div class="topbar-left">
     <h1>Zeitplanrechner</h1>
+    <select id="eventSwitcher" class="event-switcher" title="Gespeichertes Event wählen"></select>
+    <button id="btnNewEvent" class="btn-small" title="Neues Event anlegen">+ Neues Event</button>
     <input id="eventName" type="text" placeholder="Name des Events" value="Neues Event">
   </div>
   <div class="topbar-right">
+    <button id="btnDeleteEvent" class="btn-small btn-danger" title="Dieses Event löschen">Event löschen</button>
     <button id="btnExport" class="btn-secondary">Export JSON</button>
     <label class="btn-secondary file-label">
       Import JSON

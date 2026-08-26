@@ -47,7 +47,7 @@ function calcSpeedQuali(params) {
   return {
     durationMin: totalRaces * timePerRunMin,
     slots,
-    info: `${starters} Starter:innen × ${runsPerAthlete} Läufe = ${totalRuns} Einzelläufe, je 2 gleichzeitig an der Wand = ${totalRaces} Races`
+    info: `${starters} Starter:innen × ${runsPerAthlete} Versuche = ${totalRuns} Einzelversuche, je 2 gleichzeitig an der Wand = ${totalRaces} Races`
   };
 }
 
@@ -118,7 +118,7 @@ function calcSpeedFinal(params) {
     durationMin: raceIndex * raceTimeMin,
     slots,
     minPause: isFinite(minPause) ? minPause : null,
-    warning: pauseOk ? null : `Kürzeste Pause für eine:n Athlet:in zwischen zwei eigenen Läufen beträgt nur ${Math.round(minPause)} Min (Ziel: mind. ${minGapMin} Min). Reihenfolge der Kategorien/Paarungen anpassen oder mehr Kategorien parallel verzahnen, um mehr Pufferzeit zu erzeugen.`,
+    warning: pauseOk ? null : `Kürzeste Pause für eine:n Athlet:in zwischen zwei eigenen Races beträgt nur ${Math.round(minPause)} Min (Ziel: mind. ${minGapMin} Min). Reihenfolge der Kategorien/Paarungen anpassen oder mehr Kategorien parallel verzahnen, um mehr Pufferzeit zu erzeugen.`,
     info: `${categories.length} Kategorie(n) verzahnt, ${raceIndex} Races à ${raceTimeMin} Min` + (isFinite(minPause) ? `, kürzeste Athlet:innen-Pause: ${Math.round(minPause)} Min` : "")
   };
 }

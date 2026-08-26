@@ -5,8 +5,8 @@ const FIELD_DEFS = {
   boulder: [
     { key: "starters", label: "Starter:innen", type: "number" },
     { key: "numBoulders", label: "Anzahl Boulder", type: "number" },
-    { key: "climbTimeMin", label: "Boulderzeit (Min)", type: "number", step: 0.5 },
-    { key: "transitionSec", label: "Wechselzeit (Sek)", type: "number" },
+    { key: "climbTimeMin", label: "Kletterzeit (Min)", type: "number", step: 0.5 },
+    { key: "transitionSec", label: "Pause nach Intervall (Sek)", type: "number" },
     { key: "restIntervals", label: "Versatz zwischen eigenen Boulder-Versuchen (Intervalle)", type: "number", hint: "Rotationslogik ist frei wählbar (siehe Hinweis unten)" },
     { key: "numSets", label: "Anzahl Sets (physische Zonen)", type: "select", options: [[1, "1 Set"], [2, "2 Sets (Feld startet in 2 Zonen)"]] }
   ],
@@ -18,12 +18,12 @@ const FIELD_DEFS = {
   ],
   speed_quali: [
     { key: "starters", label: "Starter:innen", type: "number" },
-    { key: "runsPerAthlete", label: "Läufe pro Athlet:in", type: "number" },
-    { key: "timePerRunMin", label: "Zeit pro Lauf (Min)", type: "number", step: 0.25 }
+    { key: "runsPerAthlete", label: "Versuche pro Athlet:in", type: "number" },
+    { key: "timePerRunMin", label: "Zeit pro Race (Min)", type: "number", step: 0.25 }
   ],
   speed_final: [
     { key: "raceTimeMin", label: "Zeit pro Race (Min)", type: "number", step: 0.5 },
-    { key: "minGapMin", label: "Mindestpause pro Athlet:in zwischen eigenen Läufen (Min)", type: "number", hint: "Races selbst laufen im Takt von \"Zeit pro Race\" durch - andere Paarungen laufen ja weiter, während eine:r pausiert. Regelwerk-Richtwert: 5 Min" }
+    { key: "minGapMin", label: "Mindestpause pro Athlet:in zwischen eigenen Races (Min)", type: "number", hint: "Races selbst laufen im Takt von \"Zeit pro Race\" durch - andere Paarungen laufen ja weiter, während eine:r pausiert. Regelwerk-Richtwert: 5 Min" }
   ]
 };
 
@@ -54,11 +54,32 @@ function computeAll() {
 
 function renderAll() {
   const computed = computeAll();
+  renderEventSwitcher();
   renderDays();
   renderRoundList(computed);
   renderEditor(computed);
   renderGantt(document.getElementById("ganttContainer"), Store.event, computed);
   document.getElementById("zoomLabel").textContent = Math.round((ganttZoom / GANTT_ZOOM_DEFAULT) * 100) + "%";
+}
+
+function renderEventSwitcher() {
+  const sel = document.getElementById("eventSwitcher");
+  sel.innerHTML = "";
+  Store.listEvents().forEach(ev => {
+    const opt = document.createElement("option");
+    opt.value = ev.id;
+    opt.textContent = ev.name || "Unbenanntes Event";
+    if (ev.id === Store.currentEventId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function switchToEvent(action) {
+  action();
+  selectedRoundId = null;
+  expandedRounds.clear();
+  document.getElementById("eventName").value = Store.event.name;
+  renderAll();
 }
 
 function renderDays() {
@@ -117,6 +138,18 @@ function renderRoundList(computed) {
     info.appendChild(name);
     info.appendChild(time);
 
+    const duplicate = document.createElement("button");
+    duplicate.className = "del";
+    duplicate.textContent = "⧉";
+    duplicate.title = "Runde duplizieren";
+    duplicate.addEventListener("click", e => {
+      e.stopPropagation();
+      const copy = Store.duplicateRound(round.id);
+      selectedRoundId = copy.id;
+      focusNameOnRender = true;
+      renderAll();
+    });
+
     const del = document.createElement("button");
     del.className = "del";
     del.textContent = "🗑";
@@ -130,6 +163,7 @@ function renderRoundList(computed) {
 
     li.appendChild(dot);
     li.appendChild(info);
+    li.appendChild(duplicate);
     li.appendChild(del);
     li.addEventListener("click", () => { selectedRoundId = round.id; renderAll(); });
 
@@ -203,7 +237,7 @@ function renderEditor(computed) {
   if (round.discipline === "boulder") {
     const note = document.createElement("div");
     note.className = "warning-box";
-    note.textContent = "Hinweis: Das Regelwerk schreibt Kletterzeit (5/4 Min) und Wechselzeit (15 Sek) fest, legt die Rotationslogik aber nicht fest. Jede:r Athlet:in betritt Boulder 1 im eigenen Startintervall und wechselt alle \"Versatz\"-Intervalle zum nächsten Boulder - passe das an eure tatsächliche Aufteilung an.";
+    note.textContent = "Hinweis: Das Regelwerk schreibt Kletterzeit (5/4 Min) und die 15-Sekunden-Pause nach jedem Intervall fest, legt die Rotationslogik aber nicht fest. Jede:r Athlet:in betritt Boulder 1 im eigenen Startintervall und wechselt alle \"Versatz\"-Intervalle zum nächsten Boulder - passe das an eure tatsächliche Aufteilung an.";
     panel.appendChild(note);
   }
 
@@ -392,16 +426,12 @@ function formatDuration(mins) {
 // Jeder Tag soll auf eine eigene A4-Seite passen (page-break-after: page in CSS).
 // Damit das bei stark unterschiedlicher Rundenzahl/Zeitspanne pro Tag verlässlich klappt,
 // wird jeder .gantt-day-Block vor dem Drucken per CSS "zoom" so herunterskaliert, dass er
-// in die nutzbare A4-Querformat-Fläche passt (Detail-Ansichten werden dafür eingeklappt,
-// damit die Höhe pro Runde vorhersehbar bleibt).
-let printSavedExpanded = null;
+// in die nutzbare A4-Querformat-Fläche passt. Aufgeklappte Runden (expandedRounds) bleiben
+// dabei aufgeklappt - werden also mitgedruckt und beim Skalieren mitgemessen.
 const PRINT_PAGE_WIDTH_PX = 1000;
 const PRINT_PAGE_HEIGHT_PX = 680;
 
 function preparePrint() {
-  printSavedExpanded = new Set(expandedRounds);
-  expandedRounds.clear();
-  renderAll();
   if (!window.CSS || !CSS.supports("zoom", "1")) return;
   document.querySelectorAll(".gantt-day").forEach(dayEl => {
     dayEl.style.zoom = "1";
@@ -412,11 +442,6 @@ function preparePrint() {
 
 function restoreAfterPrint() {
   document.querySelectorAll(".gantt-day").forEach(dayEl => { dayEl.style.zoom = ""; });
-  if (printSavedExpanded) {
-    printSavedExpanded.forEach(id => expandedRounds.add(id));
-    printSavedExpanded = null;
-  }
-  renderAll();
 }
 
 function init() {
@@ -428,6 +453,22 @@ function init() {
   document.getElementById("eventName").addEventListener("input", e => {
     Store.event.name = e.target.value;
     Store.save();
+    renderEventSwitcher();
+  });
+
+  document.getElementById("eventSwitcher").addEventListener("change", e => {
+    switchToEvent(() => Store.switchEvent(e.target.value));
+  });
+
+  document.getElementById("btnNewEvent").addEventListener("click", () => {
+    const name = prompt("Name des neuen Events:", "Neues Event");
+    if (name === null) return;
+    switchToEvent(() => Store.createEvent(name));
+  });
+
+  document.getElementById("btnDeleteEvent").addEventListener("click", () => {
+    if (!confirm(`Event "${Store.event.name}" wirklich löschen? Das kann nicht rückgängig gemacht werden.`)) return;
+    switchToEvent(() => Store.deleteEvent(Store.currentEventId));
   });
 
   document.getElementById("btnAddDay").addEventListener("click", () => { Store.addDay(); renderAll(); });
@@ -473,7 +514,7 @@ function init() {
   });
 
   document.getElementById("btnReset").addEventListener("click", () => {
-    if (confirm("Wirklich das gesamte Event löschen?")) {
+    if (confirm("Alle Tage und Runden in diesem Event wirklich zurücksetzen? Das Event selbst bleibt in der Liste erhalten.")) {
       Store.reset();
       selectedRoundId = null;
       renderAll();
